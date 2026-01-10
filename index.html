@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Interactive Spiderweb Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: #0a0a0a;
+            color: #fff;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        #scene-menu {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(20, 20, 30, 0.9);
+            border: 1px solid rgba(100, 100, 150, 0.3);
+            border-radius: 10px;
+            padding: 10px;
+            min-width: 220px;
+            z-index: 101;
+            backdrop-filter: blur(10px);
+        }
+
+        #scene-menu.collapsed .scene-menu__content {
+            display: none;
+        }
+
+        #scene-menu-toggle {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: #8ab4f8;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 4px;
+        }
+
+        .scene-menu__content {
+            margin-top: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .scene-menu__content button {
+            width: 100%;
+            padding: 8px;
+            background: rgba(138, 180, 248, 0.15);
+            border: 1px solid rgba(138, 180, 248, 0.4);
+            border-radius: 6px;
+            color: #e3e8ff;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .scene-menu__content button:hover {
+            background: rgba(138, 180, 248, 0.3);
+        }
+
+        #controls-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(20, 20, 30, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(100, 100, 150, 0.3);
+            min-width: 280px;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        #controls-panel::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #controls-panel::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+
+        #controls-panel::-webkit-scrollbar-thumb {
+            background: rgba(138, 180, 248, 0.3);
+            border-radius: 4px;
+        }
+
+        #controls-panel::-webkit-scrollbar-thumb:hover {
+            background: rgba(138, 180, 248, 0.5);
+        }
+
+        #controls-panel h2 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            color: #8ab4f8;
+            border-bottom: 1px solid rgba(138, 180, 248, 0.3);
+            padding-bottom: 10px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group.disabled {
+            opacity: 0.5;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 13px;
+            color: #b8b8b8;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(138, 180, 248, 0.2);
+            outline: none;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #8ab4f8;
+            cursor: pointer;
+        }
+
+        .control-group input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #8ab4f8;
+            cursor: pointer;
+            border: none;
+        }
+
+        .control-group input[type="color"] {
+            width: 100%;
+            height: 35px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .control-group input[type="checkbox"] {
+            margin-right: 8px;
+            cursor: pointer;
+        }
+
+        .value-display {
+            float: right;
+            color: #8ab4f8;
+            font-weight: 500;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            background: rgba(138, 180, 248, 0.2);
+            border: 1px solid #8ab4f8;
+            border-radius: 5px;
+            color: #8ab4f8;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: rgba(138, 180, 248, 0.3);
+        }
+
+        button.active {
+            background: rgba(138, 180, 248, 0.45);
+            color: #ffffff;
+        }
+
+        #info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(20, 20, 30, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            border: 1px solid rgba(100, 100, 150, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        #info p {
+            margin: 5px 0;
+        }
+
+        .highlight {
+            color: #8ab4f8;
+            font-weight: 500;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="canvas-container"></div>
+    <div id="scene-menu" class="collapsed">
+        <button id="scene-menu-toggle">Scene Manager<span>▾</span></button>
+        <div class="scene-menu__content">
+            <button data-scene-action="load">Load Scene</button>
+            <button data-scene-action="save">Save Scene</button>
+            <button data-scene-action="export">Export Web</button>
+            <button data-scene-action="import-obj">Import OBJ</button>
+        </div>
+    </div>
+    <input type="file" id="scene-file-input" accept="application/json" hidden />
+    <input type="file" id="mesh-file-input" accept=".obj" hidden />
+    <div id="controls-panel">
+        <h2>Spiderweb Settings</h2>
+        <div class="control-group" id="intermediate-nodes-group">
+            <label>
+                Intermediate Nodes (Fixed)
+                <span class="value-display" id="nodes-value">3</span>
+            </label>
+            <input type="range" id="intermediate-nodes" min="1" max="10" value="3" />
+        </div>
+        <div class="control-group">
+            <label><input type="checkbox" id="interpolate-connections" checked />Interpolate Connections</label>
+        </div>
+        <div class="control-group">
+            <label><input type="checkbox" id="use-distance-spacing" />Distance-Based Spacing</label>
+        </div>
+        <div class="control-group" id="distance-spacing-group">
+            <label>
+                Distance Spacing (cm)
+                <span class="value-display" id="distance-spacing-value">10</span>
+            </label>
+            <input type="range" id="distance-spacing" min="1" max="50" step="1" value="10" />
+        </div>
+        <div class="control-group">
+            <label>
+                Node Size
+                <span class="value-display" id="node-size-value">3</span>
+            </label>
+            <input type="range" id="node-size" min="0.1" max="10" step="0.01" value="3" />
+        </div>
+        <div class="control-group">
+            <label>
+                Connection Threshold
+                <span class="value-display" id="threshold-value">1.5</span>
+            </label>
+            <input type="range" id="connection-threshold" min="0.05" max="3" step="0.05" value="1.5" />
+        </div>
+        <div class="control-group">
+            <label><input type="checkbox" id="connect-anchors" checked />Connect Children To Anchors</label>
+        </div>
+        <div class="control-group">
+            <label><input type="checkbox" id="connect-siblings" checked />Connect Siblings Together</label>
+        </div>
+        <div class="control-group">
+            <label>
+                Max Connections / Node
+                <span class="value-display" id="max-connections-value">6</span>
+            </label>
+            <input type="range" id="max-connections" min="2" max="12" value="6" />
+        </div>
+        <div class="control-group">
+            <label>Node Color</label>
+            <input type="color" id="node-color" value="#8ab4f8" />
+        </div>
+        <div class="control-group">
+            <label>Thread Color</label>
+            <input type="color" id="thread-color" value="#ffffff" />
+        </div>
+        <div class="control-group">
+            <label><input type="checkbox" id="show-wireframe" checked />Show wireframe</label>
+        </div>
+        <div class="control-group">
+            <label><input type="checkbox" id="collision-toggle" checked />Mesh Collision</label>
+        </div>
+        <div class="control-group">
+            <label><input type="checkbox" id="enable-physics" checked />Enable Physics</label>
+        </div>
+        <div class="control-group">
+            <label>
+                Gravity
+                <span class="value-display" id="gravity-value">9.8</span>
+            </label>
+            <input type="range" id="gravity" min="0" max="20" step="0.1" value="9.8" />
+        </div>
+        <div class="control-group">
+            <label>
+                Damping
+                <span class="value-display" id="damping-value">0.99</span>
+            </label>
+            <input type="range" id="damping" min="0.9" max="1" step="0.001" value="0.99" />
+        </div>
+        <div class="control-group">
+            <label>
+                Solver Quality
+                <span class="value-display" id="substeps-value">25</span>
+            </label>
+            <input type="range" id="substeps" min="5" max="100" step="1" value="25" />
+        </div>
+        <div class="control-group">
+            <label>
+                Structural Stiffness
+                <span class="value-display" id="structural-stiffness-value">0.9</span>
+            </label>
+            <input type="range" id="structural-stiffness" min="0.1" max="1" step="0.01" value="0.9" />
+        </div>
+        <div class="control-group">
+            <label>
+                Connection Stiffness
+                <span class="value-display" id="connection-stiffness-value">0.5</span>
+            </label>
+            <input type="range" id="connection-stiffness" min="0.01" max="1" step="0.01" value="0.5" />
+        </div>
+        <div class="control-group">
+            <label>
+                Connection Tension
+                <span class="value-display" id="connection-tension-value">0.85×</span>
+            </label>
+            <input type="range" id="connection-tension" min="0.1" max="1" step="0.01" value="0.85" />
+        </div>
+        <div class="control-group">
+            <label>
+                Interpolated Stiffness Boost
+                <span class="value-display" id="interpolated-stiffness-value">1.2×</span>
+            </label>
+            <input type="range" id="interpolated-stiffness" min="0.5" max="2" step="0.05" value="1.2" />
+        </div>
+        <button id="new-origin">New Origin</button>
+        <button id="clear-web">Clear Web</button>
+        <button id="randomize">Randomize Colors</button>
+    </div>
+    <div id="info">
+        <p><span class="highlight">Left Click:</span> Place node</p>
+        <p><span class="highlight">Alt + Left Click:</span> Connect to node</p>
+        <p><span class="highlight">Ctrl + Left Drag:</span> Move node</p>
+        <p><span class="highlight">Ctrl + Right Drag:</span> Cut threads</p>
+        <p><span class="highlight">Ctrl + Middle Drag:</span> Pan camera</p>
+        <p><span class="highlight">Middle Mouse + Drag:</span> Rotate camera</p>
+        <p><span class="highlight">Shift + WASD + Mouse:</span> Free-fly navigation</p>
+        <p><span class="highlight">Mouse Wheel:</span> Zoom</p>
+        <p><span class="highlight">F:</span> Frame scene</p>
+        <p><span class="highlight">F5:</span> Reset scene</p>
+        <p><span class="highlight">Ctrl+Z:</span> Undo</p>
+        <p><span class="highlight">Nodes:</span> <span id="node-count">0</span></p>
+        <p><span class="highlight">Threads:</span> <span id="thread-count">0</span></p>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+</body>
+
+</html>

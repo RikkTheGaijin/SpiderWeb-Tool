@@ -1,0 +1,1619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Interactive Spiderweb Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: #0a0a0a;
+            color: #fff;
+        }
+        
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        #controls-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(20, 20, 30, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(100, 100, 150, 0.3);
+            min-width: 280px;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+        
+        #controls-panel h2 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            color: #8ab4f8;
+            border-bottom: 1px solid rgba(138, 180, 248, 0.3);
+            padding-bottom: 10px;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group.disabled {
+            opacity: 0.5;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 13px;
+            color: #b8b8b8;
+        }
+        
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(138, 180, 248, 0.2);
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #8ab4f8;
+            cursor: pointer;
+        }
+        
+        .control-group input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #8ab4f8;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .control-group input[type="color"] {
+            width: 100%;
+            height: 35px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        .control-group input[type="checkbox"] {
+            margin-right: 8px;
+            cursor: pointer;
+        }
+        
+        .value-display {
+            display: inline-block;
+            float: right;
+            color: #8ab4f8;
+            font-weight: 500;
+        }
+        
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            background: rgba(138, 180, 248, 0.2);
+            border: 1px solid #8ab4f8;
+            border-radius: 5px;
+            color: #8ab4f8;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        button:hover {
+            background: rgba(138, 180, 248, 0.3);
+        }
+
+        button.active {
+            background: rgba(138, 180, 248, 0.45);
+            color: #ffffff;
+        }
+        
+        #info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(20, 20, 30, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            border: 1px solid rgba(100, 100, 150, 0.3);
+            backdrop-filter: blur(10px);
+        }
+        
+        #info p {
+            margin: 5px 0;
+        }
+        
+        .highlight {
+            color: #8ab4f8;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls-panel">
+        <h2>Spiderweb Settings</h2>
+        
+        <div class="control-group" id="intermediate-nodes-group">
+            <label>
+                Intermediate Nodes (Fixed)
+                <span class="value-display" id="nodes-value">3</span>
+            </label>
+            <input type="range" id="intermediate-nodes" min="1" max="10" value="3">
+        </div>
+
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="interpolate-connections" checked>
+                Interpolate Connections
+            </label>
+        </div>
+
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="use-distance-spacing">
+                Distance-Based Spacing
+            </label>
+        </div>
+
+        <div class="control-group" id="distance-spacing-group">
+            <label>
+                Distance Spacing (cm)
+                <span class="value-display" id="distance-spacing-value">10</span>
+            </label>
+            <input type="range" id="distance-spacing" min="1" max="50" step="1" value="10">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Node Size
+                <span class="value-display" id="node-size-value">0.05</span>
+            </label>
+            <input type="range" id="node-size" min="0.005" max="0.15" step="0.005" value="0.05">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Thread Thickness
+                <span class="value-display" id="thread-thickness-value">0.01</span>
+            </label>
+            <input type="range" id="thread-thickness" min="0.005" max="0.05" step="0.005" value="0.01">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Connection Threshold
+                <span class="value-display" id="threshold-value">1.5</span>
+            </label>
+            <input type="range" id="connection-threshold" min="0.5" max="3" step="0.1" value="1.5">
+        </div>
+
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="connect-anchors" checked>
+                Connect Children To Anchors
+            </label>
+        </div>
+
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="connect-siblings" checked>
+                Connect Siblings Together
+            </label>
+        </div>
+
+        <div class="control-group">
+            <label>
+                Max Connections / Node
+                <span class="value-display" id="max-connections-value">6</span>
+            </label>
+            <input type="range" id="max-connections" min="1" max="12" value="6">
+        </div>
+        
+        <div class="control-group">
+            <label>Node Color</label>
+            <input type="color" id="node-color" value="#8ab4f8">
+        </div>
+        
+        <div class="control-group">
+            <label>Thread Color</label>
+            <input type="color" id="thread-color" value="#ffffff">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="show-wireframe" checked>
+                Show wireframe
+            </label>
+        </div>
+        
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="collision-toggle" checked>
+                Cube Collision
+            </label>
+        </div>
+
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="glow-effect" checked>
+                Glow Effect
+            </label>
+        </div>
+        
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="enable-physics" checked>
+                Enable Physics
+            </label>
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Gravity
+                <span class="value-display" id="gravity-value">9.8</span>
+            </label>
+            <input type="range" id="gravity" min="0" max="20" step="0.1" value="9.8">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Damping
+                <span class="value-display" id="damping-value">0.99</span>
+            </label>
+            <input type="range" id="damping" min="0.9" max="1" step="0.001" value="0.99">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Solver Quality
+                <span class="value-display" id="substeps-value">25</span>
+            </label>
+            <input type="range" id="substeps" min="5" max="100" step="1" value="25">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Structural Stiffness
+                <span class="value-display" id="structural-stiffness-value">0.9</span>
+            </label>
+            <input type="range" id="structural-stiffness" min="0.1" max="1" step="0.01" value="0.9">
+        </div>
+        
+        <div class="control-group">
+            <label>
+                Connection Stiffness
+                <span class="value-display" id="connection-stiffness-value">0.5</span>
+            </label>
+            <input type="range" id="connection-stiffness" min="0.01" max="1" step="0.01" value="0.5">
+        </div>
+
+        <div class="control-group">
+            <label>
+                Connection Tension
+                <span class="value-display" id="connection-tension-value">0.85×</span>
+            </label>
+            <input type="range" id="connection-tension" min="0.5" max="1" step="0.01" value="0.85">
+        </div>
+
+        <div class="control-group">
+            <label>
+                Interpolated Stiffness Boost
+                <span class="value-display" id="interpolated-stiffness-value">1.2×</span>
+            </label>
+            <input type="range" id="interpolated-stiffness" min="0.5" max="2" step="0.05" value="1.2">
+        </div>
+        
+        <button id="new-origin">New Origin</button>
+        <button id="clear-web">Clear Web</button>
+        <button id="randomize">Randomize Colors</button>
+    </div>
+    
+    <div id="info">
+        <p><span class="highlight">Left Click:</span> Place node</p>
+        <p><span class="highlight">Ctrl + Left Drag:</span> Move node</p>
+        <p><span class="highlight">Ctrl + Right Drag:</span> Cut threads</p>
+        <p><span class="highlight">Middle Mouse + Drag:</span> Rotate camera</p>
+        <p><span class="highlight">Mouse Wheel:</span> Zoom</p>
+        <p><span class="highlight">Ctrl+Z:</span> Undo</p>
+        <p><span class="highlight">Nodes:</span> <span id="node-count">0</span></p>
+        <p><span class="highlight">Threads:</span> <span id="thread-count">0</span></p>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.152.0/build/three.module.js"
+        }
+    }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        
+        console.log('THREE.js loaded successfully');
+        
+        // Make THREE available globally for debugging
+        window.THREE = THREE;
+        
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0a);
+        console.log('Scene created');
+        
+        const camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(4, 3, 6);
+        camera.lookAt(0, 0, 0);
+        
+        // Add lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        
+        const pointLight = new THREE.PointLight(0xffffff, 1);
+        pointLight.position.set(10, 10, 10);
+        scene.add(pointLight);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = false;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+        const newOriginButton = document.getElementById('new-origin');
+        
+        // Settings
+        const settings = {
+            intermediateNodes: 3,
+            nodeSize: 0.05,
+            threadThickness: 0.01,
+            connectionThreshold: 1.5,
+            useDistanceSpacing: false,
+            distanceSpacing: 10,
+            maxConnections: 6,
+            interpolateConnections: true,
+            connectToAnchors: true,
+            connectToSiblings: true,
+            nodeColor: 0x8ab4f8,
+            threadColor: 0xffffff,
+            showWireframe: true,
+            glowEffect: true,
+            // Physics settings
+            enablePhysics: true,
+            enableCollision: true,
+            gravity: 9.8,
+            damping: 0.99,
+            substeps: 25,
+            structuralStiffness: 0.9,
+            connectionStiffness: 0.5,
+            connectionRestLengthFactor: 0.85,
+            interpolatedConnectionStiffness: 1.2
+        };
+        
+        // Web data
+        const MAX_INTERMEDIATE_NODES = 150;
+        const nodes = [];
+        const threads = []; // Will store connection data: { p1, p2, mesh }
+        let lastNode = null;
+        let webLineSegments = null; // Single mesh for all threads
+        
+        // Undo history
+        const history = [];
+        let isUndoing = false;
+        let pendingNewOrigin = false;
+        
+        // Physics system
+        class Particle {
+            constructor(x, y, z, mass = 1) {
+                this.pos = new THREE.Vector3(x, y, z);
+                this.prevPos = new THREE.Vector3(x, y, z);
+                this.invMass = mass > 0 ? 1 / mass : 0;
+                this.extraConnections = 0;
+                this.structuralConnections = 0;
+                this.mesh = null; // Reference to visual mesh
+            }
+        }
+        
+        class DistanceConstraint {
+            constructor(p1, p2, stiffness) {
+                this.p1 = p1;
+                this.p2 = p2;
+                this.restLength = p1.pos.distanceTo(p2.pos);
+                this.stiffness = stiffness;
+                this.baseRestLength = this.restLength;
+                this.stiffness = stiffness;
+            }
+            
+            solve() {
+                const p1 = this.p1;
+                const p2 = this.p2;
+                const totalInvMass = p1.invMass + p2.invMass;
+                if (totalInvMass === 0) return;
+                
+                const delta = new THREE.Vector3().subVectors(p2.pos, p1.pos);
+                const currentDist = delta.length();
+                if (currentDist === 0) return;
+                
+                const error = (currentDist - this.restLength) / currentDist;
+                delta.multiplyScalar(error * this.stiffness);
+                
+                if (p1.invMass > 0) p1.pos.addScaledVector(delta, p1.invMass / totalInvMass);
+                if (p2.invMass > 0) p2.pos.addScaledVector(delta, -p2.invMass / totalInvMass);
+            }
+        }
+        
+        const particles = [];
+        const constraints = [];
+        const dt = 1 / 60;
+        let clock = { delta: 0, lastTime: 0 };
+        let accumulator = 0;
+        
+        // Create cube room (5 faces, missing front face)
+        const cubeSize = 5;
+        const cubeGroup = new THREE.Group();
+        
+        function createCubeRoom() {
+            // Solid faces with edges
+            const faces = [
+                { pos: [0, 0, -cubeSize/2], rot: [0, 0, 0] }, // Back
+                { pos: [-cubeSize/2, 0, 0], rot: [0, Math.PI/2, 0] }, // Left
+                { pos: [cubeSize/2, 0, 0], rot: [0, -Math.PI/2, 0] }, // Right
+                { pos: [0, cubeSize/2, 0], rot: [Math.PI/2, 0, 0] }, // Top
+                { pos: [0, -cubeSize/2, 0], rot: [-Math.PI/2, 0, 0] }, // Bottom
+            ];
+            
+            faces.forEach(face => {
+                // Main face
+                const geometry = new THREE.PlaneGeometry(cubeSize, cubeSize);
+                const material = new THREE.MeshBasicMaterial({
+                    color: 0x2a2a4e,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.2
+                });
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.set(...face.pos);
+                mesh.rotation.set(...face.rot);
+                cubeGroup.add(mesh);
+                
+                // Edges for better visibility
+                const edges = new THREE.EdgesGeometry(geometry);
+                const lineMaterial = new THREE.LineBasicMaterial({ 
+                    color: 0x6ab4ff,
+                    linewidth: 3,
+                    transparent: false
+                });
+                const line = new THREE.LineSegments(edges, lineMaterial);
+                line.position.set(...face.pos);
+                line.rotation.set(...face.rot);
+                cubeGroup.add(line);
+            });
+            
+            scene.add(cubeGroup);
+        }
+        
+        createCubeRoom();
+        console.log('Cube room created, total objects in scene:', scene.children.length);
+        console.log('Cube group children:', cubeGroup.children.length);
+        
+        // Create line segments mesh for web threads
+        const lineGeometry = new THREE.BufferGeometry();
+        const lineMaterial = new THREE.LineBasicMaterial({ 
+            color: settings.threadColor, 
+            transparent: true, 
+            opacity: 0.8 
+        });
+        webLineSegments = new THREE.LineSegments(lineGeometry, lineMaterial);
+        scene.add(webLineSegments);
+        
+        // Raycaster for clicking
+        const raycaster = new THREE.Raycaster();
+        raycaster.params.Line.threshold = settings.threadThickness * 4;
+        const mouse = new THREE.Vector2();
+
+        // Helper to get the actual node mesh even if a child (like the glow) was hit
+        function getNodeFromIntersection(intersection) {
+            if (!intersection) return null;
+            let object = intersection.object;
+            while (object && (!object.userData || !object.userData.particle) && object.parent) {
+                object = object.parent;
+            }
+            if (object && object.userData && object.userData.particle) {
+                return object;
+            }
+            return null;
+        }
+        
+        // Camera controls
+        let isRotating = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        const cameraDistance = Math.sqrt(
+            camera.position.x ** 2 + 
+            camera.position.y ** 2 + 
+            camera.position.z ** 2
+        );
+        
+        // Interaction state
+        let draggedParticle = null;
+        let isCutting = false;
+        let hoveredNode = null;
+        let isCtrlPressed = false;
+        const interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+        const mousePoint3D = new THREE.Vector3();
+        
+        // Create node mesh
+        function createNode(position, color, isAnchor = false) {
+            const geometry = new THREE.SphereGeometry(settings.nodeSize, 16, 16);
+            const material = new THREE.MeshBasicMaterial({ color: color });
+            const node = new THREE.Mesh(geometry, material);
+            node.position.copy(position);
+            
+            if (settings.glowEffect) {
+                const glowGeometry = new THREE.SphereGeometry(settings.nodeSize * 1.5, 16, 16);
+                const glowMaterial = new THREE.MeshBasicMaterial({
+                    color: color,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+                node.add(glow);
+            }
+            
+            scene.add(node);
+            nodes.push(node);
+            
+            // Create physics particle
+            const mass = isAnchor ? 0 : 1; // Anchored nodes have infinite mass
+            const particle = new Particle(position.x, position.y, position.z, mass);
+            particle.mesh = node;
+            node.userData.particle = particle;
+            particles.push(particle);
+            
+            return node;
+        }
+        
+        // Create straight thread between two points with intermediate nodes
+        function createThread(start, end, color) {
+            const distance = start.distanceTo(end);
+            const intermediateCount = getIntermediateNodeCount(start, end);
+            const createdNodes = [];
+            const createdThreads = [];
+            const createdConstraints = [];
+            
+            // Get start particle
+            const startNode = nodes.find(n => n.position.equals(start));
+            const startParticle = startNode ? startNode.userData.particle : null;
+            
+            // Create intermediate nodes along straight line
+            const intermediatePositions = [];
+            const intermediateParticles = [];
+            for (let i = 1; i <= intermediateCount; i++) {
+                const t = i / (intermediateCount + 1);
+                const point = new THREE.Vector3().lerpVectors(start, end, t);
+                intermediatePositions.push(point);
+                
+                // Create node at intermediate point
+                const node = createNode(point, color, false);
+                createdNodes.push(node);
+                intermediateParticles.push(node.userData.particle);
+            }
+            
+            // Get end particle
+            const endNode = nodes.find(n => n.position.equals(end));
+            const endParticle = endNode ? endNode.userData.particle : null;
+            
+            // Create constraints along the main thread and store connections
+            const allParticles = [startParticle, ...intermediateParticles, endParticle].filter(p => p);
+            for (let i = 0; i < allParticles.length - 1; i++) {
+                const constraint = new DistanceConstraint(allParticles[i], allParticles[i + 1], settings.structuralStiffness);
+                constraint.isExtra = false;
+                constraint.connectionType = 'structural';
+                constraints.push(constraint);
+                createdConstraints.push(constraint);
+                incrementStructuralConnection(allParticles[i]);
+                incrementStructuralConnection(allParticles[i + 1]);
+                
+                // Store thread connection
+                const threadConnection = {
+                    p1: allParticles[i],
+                    p2: allParticles[i + 1],
+                    color: color,
+                    opacity: 0.8,
+                    isExtra: false,
+                    constraint
+                };
+                threads.push(threadConnection);
+                createdThreads.push(threadConnection);
+            }
+            
+            // Connect intermediate nodes to nearby nodes (Wolfram Hypergraph style)
+            connectNearbyNodes(
+                intermediatePositions,
+                intermediateParticles,
+                createdNodes,
+                createdThreads,
+                createdConstraints,
+                color,
+                startParticle,
+                endParticle
+            );
+            
+            return { 
+                nodes: createdNodes, 
+                threads: createdThreads,
+                constraints: createdConstraints
+            };
+        }
+
+        function createInterpolatedConnection(particleA, particleB, color, createdNodesRef, createdThreadsRef, createdConstraintsRef) {
+            if (!particleA || !particleB) return false;
+            const chainParticles = [particleA];
+            let intermediateCount = 0;
+            if (settings.interpolateConnections) {
+                intermediateCount = getIntermediateNodeCount(particleA.pos, particleB.pos);
+                for (let i = 1; i <= intermediateCount; i++) {
+                    const t = i / (intermediateCount + 1);
+                    const point = new THREE.Vector3().lerpVectors(particleA.pos, particleB.pos, t);
+                    const node = createNode(point, settings.nodeColor, false);
+                    if (createdNodesRef) {
+                        createdNodesRef.push(node);
+                    }
+                    chainParticles.push(node.userData.particle);
+                }
+            }
+            chainParticles.push(particleB);
+
+            let createdAny = false;
+            const useInterpolated = intermediateCount > 0;
+            const stiffnessValue = useInterpolated
+                ? settings.connectionStiffness * settings.interpolatedConnectionStiffness
+                : settings.connectionStiffness;
+            const connectionType = useInterpolated ? 'interpolated' : 'connection';
+            for (let i = 0; i < chainParticles.length - 1; i++) {
+                const p1 = chainParticles[i];
+                const p2 = chainParticles[i + 1];
+                const constraint = new DistanceConstraint(p1, p2, stiffnessValue);
+                constraint.isExtra = true;
+                constraint.connectionType = connectionType;
+                applyConnectionRestLength(constraint);
+                constraints.push(constraint);
+                if (createdConstraintsRef) {
+                    createdConstraintsRef.push(constraint);
+                }
+                incrementExtraConnection(p1);
+                incrementExtraConnection(p2);
+
+                const threadConnection = {
+                    p1,
+                    p2,
+                    color,
+                    opacity: 0.5,
+                    isExtra: true,
+                    constraint
+                };
+                threads.push(threadConnection);
+                if (createdThreadsRef) {
+                    createdThreadsRef.push(threadConnection);
+                }
+                createdAny = true;
+            }
+            return createdAny;
+        }
+        
+        // Connect nodes that are within threshold distance (Wolfram Hypergraph)
+        function connectNearbyNodes(newPositions, newParticles, newNodes, createdThreads, createdConstraints, color, startParticle, endParticle) {
+            const threshold = settings.connectionThreshold;
+            const anchorSet = new Set();
+            if (startParticle) anchorSet.add(startParticle);
+            if (endParticle) anchorSet.add(endParticle);
+            const newParticleSet = new Set(newParticles);
+            
+            // Check all existing nodes against new intermediate nodes
+            for (let i = 0; i < nodes.length; i++) {
+                const existingNode = nodes[i];
+                const existingParticle = existingNode.userData.particle;
+                if (!existingParticle) continue;
+                const isAnchor = anchorSet.has(existingParticle);
+                const isSibling = newParticleSet.has(existingParticle);
+
+                if (isAnchor && !settings.connectToAnchors) continue;
+                if (isSibling) {
+                    if (!settings.connectToSiblings) continue;
+                    // Let sibling-specific loop handle these to avoid duplicate constraints
+                    continue;
+                }
+                
+                for (let j = 0; j < newPositions.length; j++) {
+                    const newPos = newPositions[j];
+                    const dist = existingNode.position.distanceTo(newPos);
+                    if (dist < threshold && dist > 0.01) {
+                        const targetParticle = newParticles[j];
+                        if (existingParticle === targetParticle) continue;
+                        if (!canAddExtraConnection(existingParticle) || !canAddExtraConnection(targetParticle)) {
+                            continue;
+                        }
+                        createInterpolatedConnection(
+                            existingParticle,
+                            targetParticle,
+                            color,
+                            newNodes,
+                            createdThreads,
+                            createdConstraints
+                        );
+                    }
+                }
+            }
+            
+            // Also connect intermediate nodes to each other if within threshold
+            if (settings.connectToSiblings) {
+                for (let i = 0; i < newPositions.length; i++) {
+                    for (let j = i + 1; j < newPositions.length; j++) {
+                        const dist = newPositions[i].distanceTo(newPositions[j]);
+                        if (dist < threshold) {
+                            const a = newParticles[i];
+                            const b = newParticles[j];
+                            if (!canAddExtraConnection(a) || !canAddExtraConnection(b)) {
+                                continue;
+                            }
+                            createInterpolatedConnection(
+                                a,
+                                b,
+                                color,
+                                newNodes,
+                                createdThreads,
+                                createdConstraints
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Handle mouse click
+        function onMouseClick(event) {
+            // This function is no longer needed - all click handling is in onMouseDown
+        }
+        
+        // Handle mouse down for rotation and interaction
+        function onMouseDown(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            isCtrlPressed = event.ctrlKey || event.metaKey;
+            
+            console.log('=== MOUSE DOWN ===' );
+            console.log('Button:', event.button, 'CTRL:', isCtrlPressed);
+            console.log('Nodes count:', nodes.length);
+            
+            // Clear hover state
+            if (hoveredNode) {
+                hoveredNode.scale.set(1, 1, 1);
+                hoveredNode = null;
+            }
+            
+            // Middle mouse button (button 1)
+            if (event.button === 1) {
+                event.preventDefault();
+                isRotating = true;
+                previousMousePosition = {
+                    x: event.clientX,
+                    y: event.clientY
+                };
+                return;
+            }
+            
+            // Left or right button - check for node interaction
+            raycaster.setFromCamera(mouse, camera);
+            
+            if (event.button === 0 && isCtrlPressed) { // CTRL + Left click - drag nodes
+                // Try to intersect with nodes
+                const nodeIntersects = raycaster.intersectObjects(nodes, true);
+                console.log('CTRL+LMB - Node intersects:', nodeIntersects.length);
+                
+                if (nodeIntersects.length > 0) {
+                    const clickedNode = getNodeFromIntersection(nodeIntersects[0]);
+                    const particle = clickedNode?.userData?.particle;
+                    console.log('Clicked node, has particle:', !!particle);
+                    
+                    if (particle) {
+                        draggedParticle = particle;
+                        console.log('Started dragging, anchored:', particle.invMass === 0);
+                        
+                        // Set up interaction plane based on camera
+                        const cameraDirection = new THREE.Vector3();
+                        camera.getWorldDirection(cameraDirection);
+                        interactionPlane.setFromNormalAndCoplanarPoint(cameraDirection, particle.pos);
+                    }
+                }
+            } else if (event.button === 0 && !isCtrlPressed) { // Left click without CTRL - place new node
+                // Get all meshes (not edges) from cube group
+                const clickableFaces = cubeGroup.children.filter(child => child instanceof THREE.Mesh);
+                const faceIntersects = raycaster.intersectObjects(clickableFaces);
+                
+                if (faceIntersects.length > 0) {
+                    const point = faceIntersects[0].point;
+                    console.log('Placing node at:', point);
+                    
+                    // First node on a cube face should be anchored
+                    const isOnCubeFace = Math.abs(Math.abs(point.x) - cubeSize/2) < 0.01 ||
+                                        Math.abs(Math.abs(point.y) - cubeSize/2) < 0.01 ||
+                                        Math.abs(Math.abs(point.z) - cubeSize/2) < 0.01;
+                    const newNode = createNode(point, settings.nodeColor, isOnCubeFace);
+                    
+                    // Save to history
+                    const action = {
+                        type: 'add',
+                        node: newNode,
+                        threads: { nodes: [], threads: [], constraints: [] },
+                        previousLastNode: lastNode
+                    };
+                    
+                    // Connect to last node if exists and not starting new origin
+                    let connectFrom = lastNode;
+                    if (pendingNewOrigin) {
+                        connectFrom = null;
+                        pendingNewOrigin = false;
+                        if (newOriginButton) {
+                            newOriginButton.classList.remove('active');
+                        }
+                    }
+
+                    if (connectFrom) {
+                        const threadData = createThread(connectFrom.position, newNode.position, settings.threadColor);
+                        action.threads = threadData;
+                    }
+                    
+                    lastNode = newNode;
+                    history.push(action);
+                    updateStats();
+                    updateThreadGeometries();
+                }
+            } else if (event.button === 2 && isCtrlPressed) { // CTRL + Right click - cut threads
+                event.preventDefault();
+                isCutting = true;
+                console.log('Started cutting mode');
+                
+                performCut();
+            }
+        }
+        
+        // Handle mouse move for rotation
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Update CTRL state
+            isCtrlPressed = event.ctrlKey || event.metaKey;
+            
+            if (isRotating) {
+                const deltaX = event.clientX - previousMousePosition.x;
+                const deltaY = event.clientY - previousMousePosition.y;
+                
+                const theta = (deltaX * 0.01);
+                const phi = (deltaY * 0.01);
+                
+                // Rotate camera around origin
+                const x = camera.position.x;
+                const y = camera.position.y;
+                const z = camera.position.z;
+                
+                // Horizontal rotation
+                camera.position.x = x * Math.cos(theta) - z * Math.sin(theta);
+                camera.position.z = x * Math.sin(theta) + z * Math.cos(theta);
+                
+                // Vertical rotation (inverted for natural feel)
+                const currentRadius = Math.sqrt(camera.position.x ** 2 + camera.position.z ** 2);
+                const currentHeight = camera.position.y;
+                const newHeight = Math.max(-cameraDistance + 0.5, Math.min(cameraDistance - 0.5, currentHeight + phi * 2));
+                camera.position.y = newHeight;
+                
+                camera.lookAt(0, 0, 0);
+                
+                previousMousePosition = {
+                    x: event.clientX,
+                    y: event.clientY
+                };
+            } else if (draggedParticle) {
+                console.log('Dragging particle, anchored:', draggedParticle.invMass === 0);
+                raycaster.setFromCamera(mouse, camera);
+                
+                // If particle is anchored (on cube face), constrain to face
+                if (draggedParticle.invMass === 0) {
+                    // Raycast to cube faces
+                    const clickableFaces = cubeGroup.children.filter(child => child instanceof THREE.Mesh);
+                    const intersects = raycaster.intersectObjects(clickableFaces);
+                    if (intersects.length > 0) {
+                        draggedParticle.pos.copy(intersects[0].point);
+                        draggedParticle.prevPos.copy(intersects[0].point);
+                    }
+                } else {
+                    // Free node - move in plane perpendicular to camera
+                    if (raycaster.ray.intersectPlane(interactionPlane, mousePoint3D)) {
+                        draggedParticle.pos.copy(mousePoint3D);
+                        enforceCubeCollision(draggedParticle);
+                    }
+                }
+            } else if (isCutting) {
+                console.log('Cutting mode active');
+                raycaster.setFromCamera(mouse, camera);
+                performCut();
+            } else {
+                // Check for node hover when not doing anything else and CTRL is held
+                if (isCtrlPressed) {
+                    raycaster.setFromCamera(mouse, camera);
+                    const nodeIntersects = raycaster.intersectObjects(nodes, true);
+                    
+                    // Clear previous hover
+                    if (hoveredNode) {
+                        hoveredNode.scale.set(1, 1, 1);
+                        hoveredNode = null;
+                    }
+                    
+                    // Set new hover
+                    if (nodeIntersects.length > 0) {
+                        hoveredNode = getNodeFromIntersection(nodeIntersects[0]);
+                        hoveredNode.scale.set(1.3, 1.3, 1.3);
+                        renderer.domElement.style.cursor = 'move';
+                    } else {
+                        renderer.domElement.style.cursor = 'default';
+                    }
+                } else {
+                    // Clear hover when CTRL is not held
+                    if (hoveredNode) {
+                        hoveredNode.scale.set(1, 1, 1);
+                        hoveredNode = null;
+                    }
+                    renderer.domElement.style.cursor = 'crosshair';
+                }
+            }
+        }
+        
+        // Handle mouse up
+        function onMouseUp(event) {
+            if (event.button === 1) {
+                isRotating = false;
+            } else if (event.button === 0) {
+                draggedParticle = null;
+            } else if (event.button === 2) {
+                isCutting = false;
+            }
+        }
+        
+        // Cut thread using raycast against line segments
+        function performCut() {
+            if (!webLineSegments || threads.length === 0) return;
+            const intersections = raycaster.intersectObject(webLineSegments, false);
+            if (!intersections.length) return;
+
+            const hit = intersections[0];
+            const segmentIndex = Math.floor(hit.index / 2);
+            const thread = threads[segmentIndex];
+            if (!thread) return;
+
+            // Remove thread
+            threads.splice(segmentIndex, 1);
+
+            // Remove corresponding constraint (if it exists)
+            if (thread.constraint) {
+                removeConstraintInstance(thread.constraint);
+            }
+
+            updateThreadGeometries();
+            updateStats();
+        }
+        
+        // Handle mouse wheel for zoom
+        function onMouseWheel(event) {
+            event.preventDefault();
+            const delta = event.deltaY * 0.001;
+            const factor = 1 + delta;
+            
+            camera.position.multiplyScalar(factor);
+            const newDistance = Math.sqrt(
+                camera.position.x ** 2 + 
+                camera.position.y ** 2 + 
+                camera.position.z ** 2
+            );
+            
+            // Clamp zoom
+            if (newDistance < 2 || newDistance > 15) {
+                camera.position.divideScalar(factor);
+            }
+        }
+        
+        // Enforce cube collision for a particle
+        function enforceCubeCollision(particle) {
+            if (!settings.enableCollision || particle.invMass === 0) return;
+            const padding = settings.nodeSize * 1.2;
+            const halfSize = cubeSize / 2 - padding;
+            let clamped = false;
+            if (particle.pos.x > halfSize) { particle.pos.x = halfSize; clamped = true; }
+            if (particle.pos.x < -halfSize) { particle.pos.x = -halfSize; clamped = true; }
+            if (particle.pos.y > halfSize) { particle.pos.y = halfSize; clamped = true; }
+            if (particle.pos.y < -halfSize) { particle.pos.y = -halfSize; clamped = true; }
+            if (particle.pos.z > halfSize) { particle.pos.z = halfSize; clamped = true; }
+            if (particle.pos.z < -halfSize) { particle.pos.z = -halfSize; clamped = true; }
+            if (clamped) {
+                particle.prevPos.copy(particle.pos);
+            }
+        }
+
+        // Physics simulation step
+        function simulatePhysics() {
+            if (!settings.enablePhysics) return;
+            
+            const gravity = new THREE.Vector3(0, -settings.gravity * dt, 0);
+            
+            // Apply forces and integrate
+            for (const p of particles) {
+                if (p.invMass === 0) continue; // Skip anchored particles
+                if (p === draggedParticle) continue; // Skip dragged particle
+                
+                const velocity = new THREE.Vector3()
+                    .subVectors(p.pos, p.prevPos)
+                    .multiplyScalar(settings.damping);
+                    
+                p.prevPos.copy(p.pos);
+                p.pos.add(velocity).addScaledVector(gravity, dt);
+            }
+            
+            // Solve constraints
+            for (let i = 0; i < settings.substeps; i++) {
+                for (const c of constraints) {
+                    c.solve();
+                }
+                
+                // Keep dragged particle in place during constraint solving
+                if (draggedParticle && draggedParticle.invMass === 0) {
+                    // Anchored particles stay on surface during drag
+                }
+            }
+
+            if (settings.enableCollision) {
+                for (const p of particles) {
+                    if (p.invMass > 0 || p === draggedParticle) {
+                        enforceCubeCollision(p);
+                    }
+                }
+            }
+            
+            // Update visual positions
+            for (const p of particles) {
+                if (p.mesh) {
+                    p.mesh.position.copy(p.pos);
+                }
+            }
+            
+            // Update thread geometries to follow nodes
+            updateThreadGeometries();
+        }
+        
+        // Update thread geometries based on node positions
+        function updateThreadGeometries() {
+            if (!webLineSegments) return;
+
+            if (threads.length === 0) {
+                webLineSegments.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+                webLineSegments.geometry.computeBoundingSphere();
+                webLineSegments.geometry.computeBoundingBox();
+                return;
+            }
+
+            // Build positions array for all thread segments
+            const positions = new Float32Array(threads.length * 6); // 2 vertices per thread, 3 coords per vertex
+            
+            for (let i = 0; i < threads.length; i++) {
+                const thread = threads[i];
+                const offset = i * 6;
+                
+                positions[offset] = thread.p1.pos.x;
+                positions[offset + 1] = thread.p1.pos.y;
+                positions[offset + 2] = thread.p1.pos.z;
+                
+                positions[offset + 3] = thread.p2.pos.x;
+                positions[offset + 4] = thread.p2.pos.y;
+                positions[offset + 5] = thread.p2.pos.z;
+            }
+            
+            webLineSegments.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            webLineSegments.geometry.attributes.position.needsUpdate = true;
+            webLineSegments.geometry.computeBoundingSphere();
+            webLineSegments.geometry.computeBoundingBox();
+        }
+
+        function refreshNodeSizes() {
+            nodes.forEach(node => {
+                if (hoveredNode === node) {
+                    hoveredNode = null; // reset hover so new geometry isn't scaled
+                }
+                node.scale.set(1, 1, 1);
+                if (node.geometry) {
+                    node.geometry.dispose();
+                }
+                node.geometry = new THREE.SphereGeometry(settings.nodeSize, 16, 16);
+                if (node.children && node.children.length > 0) {
+                    const glow = node.children[0];
+                    if (glow.geometry) {
+                        glow.geometry.dispose();
+                    }
+                    glow.geometry = new THREE.SphereGeometry(settings.nodeSize * 1.5, 16, 16);
+                }
+            });
+        }
+
+        function refreshThreadAppearance() {
+            raycaster.params.Line.threshold = settings.threadThickness * 4;
+            if (webLineSegments && webLineSegments.material) {
+                webLineSegments.material.linewidth = settings.threadThickness * 40;
+                webLineSegments.material.needsUpdate = true;
+            }
+            updateThreadGeometries();
+        }
+
+        function getTotalConnections(particle) {
+            if (!particle) return 0;
+            return (particle.extraConnections || 0) + (particle.structuralConnections || 0);
+        }
+
+        function canAddExtraConnection(particle) {
+            if (!particle) return false;
+            return getTotalConnections(particle) < settings.maxConnections;
+        }
+
+        function incrementExtraConnection(particle) {
+            if (!particle) return;
+            particle.extraConnections = (particle.extraConnections || 0) + 1;
+        }
+
+        function decrementExtraConnection(particle) {
+            if (!particle) return;
+            particle.extraConnections = Math.max(0, (particle.extraConnections || 0) - 1);
+        }
+
+        function incrementStructuralConnection(particle) {
+            if (!particle) return;
+            particle.structuralConnections = (particle.structuralConnections || 0) + 1;
+        }
+
+        function decrementStructuralConnection(particle) {
+            if (!particle) return;
+            particle.structuralConnections = Math.max(0, (particle.structuralConnections || 0) - 1);
+        }
+
+        function applyConnectionRestLength(constraint) {
+            if (!constraint) return;
+            if (constraint.connectionType !== 'connection' && constraint.connectionType !== 'interpolated') return;
+            const factor = settings.connectionRestLengthFactor || 1;
+            constraint.restLength = constraint.baseRestLength * factor;
+        }
+
+        function removeConstraintInstance(constraint, skipCleanup = false) {
+            if (!constraint) return;
+            if (constraint.isExtra) {
+                decrementExtraConnection(constraint.p1);
+                decrementExtraConnection(constraint.p2);
+            } else {
+                decrementStructuralConnection(constraint.p1);
+                decrementStructuralConnection(constraint.p2);
+            }
+            const idx = constraints.indexOf(constraint);
+            if (idx > -1) {
+                constraints.splice(idx, 1);
+            }
+            if (!skipCleanup) {
+                cleanupOrphanNodes();
+            }
+        }
+
+        function removeNodeCompletely(node) {
+            if (!node) return;
+            if (hoveredNode === node) {
+                hoveredNode = null;
+            }
+            if (lastNode === node) {
+                lastNode = null;
+            }
+            const particle = node.userData ? node.userData.particle : null;
+            if (particle && draggedParticle === particle) {
+                draggedParticle = null;
+            }
+            if (particle) {
+                particle.mesh = null;
+            }
+            scene.remove(node);
+            const nodeIdx = nodes.indexOf(node);
+            if (nodeIdx > -1) {
+                nodes.splice(nodeIdx, 1);
+            }
+            if (particle) {
+                const pIdx = particles.indexOf(particle);
+                if (pIdx > -1) {
+                    particles.splice(pIdx, 1);
+                }
+            }
+        }
+
+        function cleanupOrphanNodes() {
+            let removedAny = false;
+            for (let i = nodes.length - 1; i >= 0; i--) {
+                const node = nodes[i];
+                const particle = node.userData ? node.userData.particle : null;
+                if (!particle) continue;
+                if (particle === draggedParticle) continue;
+                if (getTotalConnections(particle) > 0) continue;
+                removeNodeCompletely(node);
+                removedAny = true;
+            }
+            if (removedAny) {
+                updateThreadGeometries();
+                updateStats();
+            }
+        }
+
+        function getIntermediateNodeCount(start, end) {
+            if (!settings.useDistanceSpacing) {
+                return settings.intermediateNodes;
+            }
+            const spacingUnits = Math.max(0.001, settings.distanceSpacing / 20); // convert cm to world units (scaled)
+            const totalDistance = start.distanceTo(end);
+            const count = Math.floor(totalDistance / spacingUnits) - 1;
+            return Math.max(0, Math.min(MAX_INTERMEDIATE_NODES, count));
+        }
+
+        function updateSpacingControls() {
+            const fixedGroup = document.getElementById('intermediate-nodes-group');
+            const fixedSlider = document.getElementById('intermediate-nodes');
+            const distanceGroup = document.getElementById('distance-spacing-group');
+            const distanceSlider = document.getElementById('distance-spacing');
+
+            if (!fixedGroup || !distanceGroup) return;
+
+            if (settings.useDistanceSpacing) {
+                fixedGroup.classList.add('disabled');
+                fixedSlider.disabled = true;
+                distanceGroup.classList.remove('disabled');
+                distanceSlider.disabled = false;
+            } else {
+                fixedGroup.classList.remove('disabled');
+                fixedSlider.disabled = false;
+                distanceGroup.classList.add('disabled');
+                distanceSlider.disabled = true;
+            }
+        }
+        
+        // Update stats
+        function updateStats() {
+            document.getElementById('node-count').textContent = nodes.length;
+            document.getElementById('thread-count').textContent = threads.length;
+        }
+        
+        // Clear web
+        function clearWeb() {
+            nodes.forEach(node => scene.remove(node));
+            nodes.length = 0;
+            threads.length = 0;
+            particles.length = 0;
+            constraints.length = 0;
+            lastNode = null;
+            history.length = 0;
+            pendingNewOrigin = false;
+            if (newOriginButton) {
+                newOriginButton.classList.remove('active');
+            }
+            
+            // Clear line segments
+            if (webLineSegments) {
+                webLineSegments.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+            }
+            
+            updateStats();
+        }
+        
+        // Undo last action
+        function undo() {
+            if (history.length === 0) return;
+            
+            isUndoing = true;
+            const action = history.pop();
+            
+            if (action.type === 'add') {
+                // Remove the main node
+                scene.remove(action.node);
+                const nodeIndex = nodes.indexOf(action.node);
+                if (nodeIndex > -1) nodes.splice(nodeIndex, 1);
+                
+                // Remove particle
+                const particle = action.node.userData.particle;
+                if (particle) {
+                    const pIndex = particles.indexOf(particle);
+                    if (pIndex > -1) particles.splice(pIndex, 1);
+                }
+                
+                // Remove all intermediate nodes
+                action.threads.nodes.forEach(node => {
+                    scene.remove(node);
+                    const idx = nodes.indexOf(node);
+                    if (idx > -1) nodes.splice(idx, 1);
+                    
+                    const p = node.userData.particle;
+                    if (p) {
+                        const pIdx = particles.indexOf(p);
+                        if (pIdx > -1) particles.splice(pIdx, 1);
+                    }
+                });
+                
+                // Remove all thread segments
+                action.threads.threads.forEach(thread => {
+                    const idx = threads.indexOf(thread);
+                    if (idx > -1) threads.splice(idx, 1);
+                });
+                
+                // Update line geometry
+                updateThreadGeometries();
+                
+                // Remove all constraints
+                if (action.threads.constraints) {
+                    action.threads.constraints.forEach(constraint => {
+                        removeConstraintInstance(constraint, true);
+                    });
+                }
+                
+                // Restore previous lastNode
+                lastNode = action.previousLastNode;
+            }
+            
+            updateStats();
+            isUndoing = false;
+        }
+        
+        // Randomize colors
+        function randomizeColors() {
+            const randomColor = () => Math.random() * 0xffffff;
+            const newNodeColor = randomColor();
+            const newThreadColor = randomColor();
+            
+            settings.nodeColor = newNodeColor;
+            settings.threadColor = newThreadColor;
+            
+            document.getElementById('node-color').value = 
+                '#' + Math.floor(newNodeColor).toString(16).padStart(6, '0');
+            document.getElementById('thread-color').value = 
+                '#' + Math.floor(newThreadColor).toString(16).padStart(6, '0');
+        }
+        
+        // Event listeners
+        renderer.domElement.addEventListener('mousedown', onMouseDown);
+        renderer.domElement.addEventListener('mousemove', onMouseMove);
+        renderer.domElement.addEventListener('mouseup', onMouseUp);
+        renderer.domElement.addEventListener('wheel', onMouseWheel, { passive: false });
+        renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+        
+        // Keyboard shortcuts
+        window.addEventListener('keydown', (e) => {
+            // CTRL+Z or CMD+Z for undo
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                e.preventDefault();
+                undo();
+            }
+        });
+        
+        // Control panel listeners
+        document.getElementById('intermediate-nodes').addEventListener('input', (e) => {
+            settings.intermediateNodes = parseInt(e.target.value);
+            document.getElementById('nodes-value').textContent = e.target.value;
+        });
+
+        document.getElementById('interpolate-connections').addEventListener('change', (e) => {
+            settings.interpolateConnections = e.target.checked;
+        });
+
+        document.getElementById('use-distance-spacing').addEventListener('change', (e) => {
+            settings.useDistanceSpacing = e.target.checked;
+            updateSpacingControls();
+        });
+
+        document.getElementById('distance-spacing').addEventListener('input', (e) => {
+            settings.distanceSpacing = parseInt(e.target.value);
+            document.getElementById('distance-spacing-value').textContent = e.target.value;
+        });
+        
+        document.getElementById('node-size').addEventListener('input', (e) => {
+            settings.nodeSize = parseFloat(e.target.value);
+            document.getElementById('node-size-value').textContent = e.target.value;
+             refreshNodeSizes();
+        });
+        
+        document.getElementById('thread-thickness').addEventListener('input', (e) => {
+            settings.threadThickness = parseFloat(e.target.value);
+            document.getElementById('thread-thickness-value').textContent = e.target.value;
+            refreshThreadAppearance();
+        });
+        
+        document.getElementById('connection-threshold').addEventListener('input', (e) => {
+            settings.connectionThreshold = parseFloat(e.target.value);
+            document.getElementById('threshold-value').textContent = e.target.value;
+        });
+
+        document.getElementById('connect-anchors').addEventListener('change', (e) => {
+            settings.connectToAnchors = e.target.checked;
+        });
+
+        document.getElementById('connect-siblings').addEventListener('change', (e) => {
+            settings.connectToSiblings = e.target.checked;
+        });
+
+        document.getElementById('max-connections').addEventListener('input', (e) => {
+            settings.maxConnections = parseInt(e.target.value);
+            document.getElementById('max-connections-value').textContent = e.target.value;
+        });
+        
+        document.getElementById('node-color').addEventListener('input', (e) => {
+            settings.nodeColor = parseInt(e.target.value.replace('#', '0x'));
+        });
+        
+        document.getElementById('thread-color').addEventListener('input', (e) => {
+            settings.threadColor = parseInt(e.target.value.replace('#', '0x'));
+            if (webLineSegments) {
+                webLineSegments.material.color.setHex(settings.threadColor);
+            }
+        });
+        
+        document.getElementById('show-wireframe').addEventListener('change', (e) => {
+            settings.showWireframe = e.target.checked;
+            cubeGroup.traverse(obj => {
+                if (obj.isMesh && obj.material) {
+                    obj.material.wireframe = e.target.checked;
+                    obj.material.needsUpdate = true;
+                }
+            });
+        });
+        
+        document.getElementById('collision-toggle').addEventListener('change', (e) => {
+            settings.enableCollision = e.target.checked;
+        });
+
+        document.getElementById('glow-effect').addEventListener('change', (e) => {
+            settings.glowEffect = e.target.checked;
+        });
+        
+        document.getElementById('enable-physics').addEventListener('change', (e) => {
+            settings.enablePhysics = e.target.checked;
+        });
+        
+        document.getElementById('gravity').addEventListener('input', (e) => {
+            settings.gravity = parseFloat(e.target.value);
+            document.getElementById('gravity-value').textContent = e.target.value;
+        });
+        
+        document.getElementById('damping').addEventListener('input', (e) => {
+            settings.damping = parseFloat(e.target.value);
+            document.getElementById('damping-value').textContent = e.target.value;
+        });
+        
+        document.getElementById('substeps').addEventListener('input', (e) => {
+            settings.substeps = parseInt(e.target.value);
+            document.getElementById('substeps-value').textContent = e.target.value;
+        });
+        
+        document.getElementById('structural-stiffness').addEventListener('input', (e) => {
+            settings.structuralStiffness = parseFloat(e.target.value);
+            document.getElementById('structural-stiffness-value').textContent = e.target.value;
+            // Update existing structural constraints
+            constraints.forEach(c => {
+                if (c.connectionType === 'structural') {
+                    c.stiffness = settings.structuralStiffness;
+                }
+            });
+        });
+        
+        document.getElementById('connection-stiffness').addEventListener('input', (e) => {
+            settings.connectionStiffness = parseFloat(e.target.value);
+            document.getElementById('connection-stiffness-value').textContent = e.target.value;
+            // Update existing connection constraints
+            constraints.forEach(c => {
+                if (c.connectionType === 'connection') {
+                    c.stiffness = settings.connectionStiffness;
+                } else if (c.connectionType === 'interpolated') {
+                    c.stiffness = settings.connectionStiffness * settings.interpolatedConnectionStiffness;
+                }
+            });
+        });
+
+        document.getElementById('connection-tension').addEventListener('input', (e) => {
+            settings.connectionRestLengthFactor = parseFloat(e.target.value);
+            document.getElementById('connection-tension-value').textContent = e.target.value + '×';
+            constraints.forEach(c => applyConnectionRestLength(c));
+        });
+
+        document.getElementById('interpolated-stiffness').addEventListener('input', (e) => {
+            settings.interpolatedConnectionStiffness = parseFloat(e.target.value);
+            document.getElementById('interpolated-stiffness-value').textContent = e.target.value + '×';
+            constraints.forEach(c => {
+                if (c.connectionType === 'interpolated') {
+                    c.stiffness = settings.connectionStiffness * settings.interpolatedConnectionStiffness;
+                }
+            });
+        });
+        
+        newOriginButton.addEventListener('click', () => {
+            pendingNewOrigin = true;
+            newOriginButton.classList.add('active');
+        });
+
+        document.getElementById('clear-web').addEventListener('click', clearWeb);
+        document.getElementById('randomize').addEventListener('click', randomizeColors);
+
+        updateSpacingControls();
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Animation loop
+        let frameCount = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (frameCount === 0) {
+                console.log('First frame rendering');
+                console.log('Camera position:', camera.position);
+                console.log('Scene children:', scene.children.length);
+            }
+            frameCount++;
+            
+            // Physics simulation with fixed timestep
+            const now = performance.now() / 1000;
+            const delta = Math.min(now - (clock.lastTime || now), 0.05);
+            clock.lastTime = now;
+            accumulator += delta;
+            
+            while (accumulator >= dt) {
+                simulatePhysics();
+                accumulator -= dt;
+            }
+            
+            // Add subtle animation to nodes
+            const time = Date.now() * 0.001;
+            nodes.forEach((node, index) => {
+                if (settings.glowEffect && node.children.length > 0) {
+                    const glow = node.children[0];
+                    glow.material.opacity = 0.2 + Math.sin(time * 2 + index * 0.5) * 0.15;
+                }
+            });
+            
+            renderer.render(scene, camera);
+        }
+        
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Three.js High-Performance Physics Simulation</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1a1a2a; }
+        .info {
+            position: absolute; top: 10px; width: 100%;
+            text-align: center; color: white;
+            font-family: monospace; font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        LMB & Drag: Pull | MMB & Drag: Pan | RMB & Drag: Cut | Mouse Wheel: Zoom
+    </div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+                "lil-gui": "https://unpkg.com/lil-gui@0.19.2/dist/lil-gui.esm.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GUI } from 'lil-gui';
+
+        // --- GLOBAL SETUP ---
+        let scene, camera, renderer, raycaster, gui;
+        let complexityController1, complexityController2, substepsController, shearStiffnessController;
+        const mouse = new THREE.Vector2();
+        let pbdEngine;
+        let webLineMesh;
+        // preallocated position buffer and timing
+        let positionsArray = null;
+        let clock, accumulator = 0;
+
+        // --- PHYSICS & SCENE SETTINGS OBJECT ---
+        const settings = {
+            mode: 'Spiderweb',
+            gravity: 9.8,
+            substeps: 25,
+            damping: 0.99,
+            complexity1: 16,
+            complexity2: 12,
+            radialStiffness: 0.9,
+            spiralStiffness: 0.7,
+            anchorStiffness: 1.0,
+            reset: () => resetSimulation()
+        };
+
+        // --- INTERACTION ---
+        let draggedParticle = null;
+        let isCutting = false;
+        let isPanning = false;
+        const panStartPoint = new THREE.Vector2();
+        const mousePoint3D = new THREE.Vector3();
+        const interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+        const tempVec3 = new THREE.Vector3();
+        const tempLine3 = new THREE.Line3();
+
+        class Particle {
+            constructor(x, y, z, mass = 1) {
+                this.pos = new THREE.Vector3(x, y, z);
+                this.prevPos = new THREE.Vector3(x, y, z);
+                this.invMass = mass > 0 ? 1 / mass : 0;
+            }
+        }
+
+        class DistanceConstraint {
+            constructor(p1, p2, stiffness, isAnchor = false) {
+                this.p1 = p1; this.p2 = p2;
+                this.restLength = p1.pos.distanceTo(p2.pos);
+                this.stiffness = stiffness;
+                this.isAnchor = isAnchor;
+            }
+
+            solve() {
+                const p1 = this.p1; const p2 = this.p2;
+                const totalInvMass = p1.invMass + p2.invMass;
+                if (totalInvMass === 0) return;
+
+                tempVec3.subVectors(p2.pos, p1.pos);
+                const currentDist = tempVec3.length();
+                if (currentDist === 0) return;
+
+                const error = (currentDist - this.restLength) / currentDist;
+                
+                tempVec3.multiplyScalar(error * this.stiffness);
+
+                if (p1.invMass > 0) p1.pos.addScaledVector(tempVec3, p1.invMass / totalInvMass);
+                if (p2.invMass > 0) p2.pos.addScaledVector(tempVec3, -p2.invMass / totalInvMass);
+            }
+        }
+
+        class PBDEngine {
+            constructor() {
+                this.particles = []; this.constraints = [];
+                this.gravity = new THREE.Vector3();
+                this.dt = 1 / 60;
+            }
+            
+            clear() { this.particles = []; this.constraints = []; }
+            addParticle(p) {
+                // assign stable id to avoid indexOf during index building
+                p.id = this.particles.length;
+                this.particles.push(p);
+            }
+            addConstraint(c) { this.constraints.push(c); }
+            removeConstraint(c) { this.constraints = this.constraints.filter(con => con !== c); }
+
+            step() {
+                this.gravity.set(0, -settings.gravity * this.dt, 0);
+
+                for (const p of this.particles) {
+                    if (p.invMass === 0) continue;
+                    
+                    const velocity = tempVec3.subVectors(p.pos, p.prevPos).multiplyScalar(settings.damping);
+                    p.prevPos.copy(p.pos);
+                    p.pos.add(velocity).addScaledVector(this.gravity, this.dt);
+                }
+
+                if (draggedParticle) {
+                    draggedParticle.pos.copy(mousePoint3D);
+                }
+
+                for (let i = 0; i < settings.substeps; i++) {
+                    for (const c of this.constraints) {
+                        c.solve();
+                    }
+                    if (draggedParticle) {
+                        draggedParticle.pos.copy(mousePoint3D);
+                    }
+                }
+            }
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 30);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            raycaster = new THREE.Raycaster();
+            // removed unused raycaster.params.Line.threshold
+
+            scene.add(new THREE.AmbientLight(0x666666));
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(5, 10, 7);
+            scene.add(light);
+            
+            pbdEngine = new PBDEngine();
+            
+            gui = new GUI();
+            gui.add(settings, 'mode', ['Spiderweb', 'Curtain']).name("Mode").onChange(onModeChange);
+            
+            const webFolder = gui.addFolder('Complexity');
+            // cap ranges to keep performance manageable
+            complexityController1 = webFolder.add(settings, 'complexity1', 4, 64, 1).onChange(resetSimulation);
+            complexityController2 = webFolder.add(settings, 'complexity2', 4, 64, 1).onChange(resetSimulation);
+            
+            const physicsFolder = gui.addFolder('Physics');
+            physicsFolder.add(settings, 'gravity', 0, 50, 0.1).name("Gravity");
+            physicsFolder.add(settings, 'damping', 0.9, 1, 0.001).name("Damping (1=none)");
+            substepsController = physicsFolder.add(settings, 'substeps', 5, 100, 1).name("Solver Quality");
+            physicsFolder.add(settings, 'radialStiffness', 0.01, 1, 0.01).name("Structural Stiffness").onChange(resetSimulation);
+            shearStiffnessController = physicsFolder.add(settings, 'spiralStiffness', 0.01, 1, 0.01).name("Shear Stiffness").onChange(resetSimulation);
+            physicsFolder.add(settings, 'anchorStiffness', 0.1, 1, 0.01).onChange(resetSimulation);
+            
+            gui.add(settings, 'reset').name("Reset Simulation");
+
+            // init timing
+            clock = new THREE.Clock();
+            accumulator = 0;
+
+            resetSimulation();
+            
+            window.addEventListener('resize', onWindowResize);
+            renderer.domElement.addEventListener('pointerdown', onPointerDown);
+            renderer.domElement.addEventListener('pointermove', onPointerMove);
+            renderer.domElement.addEventListener('pointerup', onPointerUp);
+            renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+            renderer.domElement.addEventListener('wheel', onMouseWheel, { passive: false });
+
+            animate();
+        }
+        
+        function onModeChange() {
+            if (settings.mode === 'Spiderweb') {
+                complexityController1.name("Spokes");
+                complexityController2.name("Segments");
+                settings.substeps = 25;
+                settings.spiralStiffness = 0.7;
+            } else if (settings.mode === 'Curtain') {
+                complexityController1.name("Width");
+                complexityController2.name("Height");
+                settings.substeps = 5;
+                settings.spiralStiffness = 0.01;
+            }
+            // Update the GUI display to show the new default values
+            substepsController.updateDisplay();
+            shearStiffnessController.updateDisplay();
+            // Now, reset the simulation
+            resetSimulation();
+        }
+        
+        function createCurtainAssets() {
+            const width = settings.complexity1;
+            const height = settings.complexity2;
+            const distance = 1.2;
+            const particles = [];
+
+            for (let y = 0; y <= height; y++) {
+                const row = [];
+                for (let x = 0; x <= width; x++) {
+                    const p = new Particle( (x - width / 2) * distance, (height / 2 - y) * distance, 0 );
+                    pbdEngine.addParticle(p);
+                    if (y === 0) {
+                        const anchor = new Particle(p.pos.x, p.pos.y, p.pos.z, 0);
+                        pbdEngine.addParticle(anchor);
+                        pbdEngine.addConstraint(new DistanceConstraint(p, anchor, settings.anchorStiffness, true));
+                    }
+                    row.push(p);
+                }
+                particles.push(row);
+            }
+
+            for (let y = 0; y <= height; y++) {
+                for (let x = 0; x <= width; x++) {
+                    if (x < width) pbdEngine.addConstraint(new DistanceConstraint(particles[y][x], particles[y][x + 1], settings.radialStiffness));
+                    if (y < height) pbdEngine.addConstraint(new DistanceConstraint(particles[y][x], particles[y + 1][x], settings.radialStiffness));
+                    if (x < width && y < height) {
+                        pbdEngine.addConstraint(new DistanceConstraint(particles[y][x], particles[y+1][x+1], settings.spiralStiffness));
+                        pbdEngine.addConstraint(new DistanceConstraint(particles[y+1][x], particles[y][x+1], settings.spiralStiffness));
+                    }
+                }
+            }
+        }
+
+        function createSpiderwebAssets() {
+            const numSpokes = settings.complexity1;
+            const numSegments = settings.complexity2;
+            const segmentLength = 1.2;
+            
+            const center = new Particle(0, 0, 0);
+            pbdEngine.addParticle(center);
+
+            const spokes = [];
+            for (let i = 0; i < numSpokes; i++) {
+                const angle = (i / numSpokes) * Math.PI * 2;
+                const spokeParticles = [];
+                let prevParticle = center;
+                for (let j = 1; j <= numSegments; j++) {
+                    const p = new Particle( Math.cos(angle) * j * segmentLength, Math.sin(angle) * j * segmentLength, 0 );
+                    pbdEngine.addParticle(p);
+                    pbdEngine.addConstraint(new DistanceConstraint(prevParticle, p, settings.radialStiffness));
+                    if (j === numSegments) {
+                        const anchor = new Particle(p.pos.x, p.pos.y, p.pos.z, 0);
+                        pbdEngine.addParticle(anchor);
+                        pbdEngine.addConstraint(new DistanceConstraint(p, anchor, settings.anchorStiffness, true));
+                    }
+                    spokeParticles.push(p);
+                    prevParticle = p;
+                }
+                spokes.push(spokeParticles);
+            }
+
+            for (let j = 0; j < numSegments; j++) {
+                for (let i = 0; i < numSpokes; i++) {
+                    const p1 = spokes[i][j];
+                    const p2 = spokes[(i + 1) % numSpokes][j];
+                    pbdEngine.addConstraint(new DistanceConstraint(p1, p2, settings.spiralStiffness));
+                }
+            }
+        }
+
+        function resetSimulation() {
+            pbdEngine.clear();
+            
+            if (settings.mode === 'Spiderweb') {
+                createSpiderwebAssets();
+            } else if (settings.mode === 'Curtain') {
+                createCurtainAssets();
+            }
+
+            // Update GUI labels based on mode
+            if (complexityController1) {
+                if (settings.mode === 'Spiderweb') {
+                    complexityController1.name("Spokes");
+                    complexityController2.name("Segments");
+                } else if (settings.mode === 'Curtain') {
+                    complexityController1.name("Width");
+                    complexityController2.name("Height");
+                }
+            }
+
+            if (!webLineMesh) {
+                const lineGeometry = new THREE.BufferGeometry();
+                const lineMaterial = new THREE.LineBasicMaterial({ color: 0xeeeeff, transparent: true, opacity: 0.85 });
+                webLineMesh = new THREE.LineSegments(lineGeometry, lineMaterial);
+                scene.add(webLineMesh);
+            }
+            
+            // (re)allocate attribute buffers to match current particle count
+            positionsArray = new Float32Array(pbdEngine.particles.length * 3);
+            webLineMesh.geometry.setAttribute('position', new THREE.BufferAttribute(positionsArray, 3));
+
+            updateWebConnections();
+            updateVertexPositions();
+            webLineMesh.geometry.computeBoundingSphere(); // compute once after topology change
+        }
+        
+        function updateWebConnections() {
+            const indices = [];
+            for (const c of pbdEngine.constraints) {
+                if (!c.isAnchor) {
+                    // use stable particle ids to avoid O(n) indexOf
+                    indices.push(c.p1.id, c.p2.id);
+                }
+            }
+            webLineMesh.geometry.setIndex(indices);
+            if (webLineMesh.geometry.index) webLineMesh.geometry.index.needsUpdate = true;
+        }
+        
+        function updateVertexPositions() {
+            // update in-place without reallocations
+            const positions = webLineMesh.geometry.attributes.position.array;
+            for (let i = 0; i < pbdEngine.particles.length; i++) {
+                const p = pbdEngine.particles[i].pos;
+                const o = i * 3;
+                positions[o] = p.x; positions[o + 1] = p.y; positions[o + 2] = p.z;
+            }
+            webLineMesh.geometry.attributes.position.needsUpdate = true;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            // fixed-step accumulator for consistent simulation rate
+            const delta = clock.getDelta();
+            accumulator += Math.min(delta, 0.05);
+            while (accumulator >= pbdEngine.dt) {
+                pbdEngine.step();
+                accumulator -= pbdEngine.dt;
+            }
+            updateVertexPositions();
+            renderer.render(scene, camera);
+        }
+        
+        function updateMouse(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function performCut(point3D) {
+            let closestConstraint = null;
+            let minDistance = Infinity;
+            
+            for (const c of pbdEngine.constraints) {
+                if (c.isAnchor) continue;
+                tempLine3.set(c.p1.pos, c.p2.pos);
+                const closestPointOnSegment = tempLine3.closestPointToPoint(point3D, true, tempVec3);
+                const dist = point3D.distanceTo(closestPointOnSegment);
+                
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closestConstraint = c;
+                }
+            }
+            
+            if (minDistance < 1.0) {
+                pbdEngine.removeConstraint(closestConstraint);
+                updateWebConnections();
+            }
+        }
+        
+        function onPointerDown(event) {
+            updateMouse(event);
+
+            if (event.button === 1) { // Middle mouse button
+                isPanning = true;
+                panStartPoint.set(event.clientX, event.clientY);
+                return;
+            }
+            
+            // capture pointer so drag continues outside canvas
+            try { renderer.domElement.setPointerCapture?.(event.pointerId); } catch {}
+
+            raycaster.setFromCamera(mouse, camera);
+            if (raycaster.ray.intersectPlane(interactionPlane, mousePoint3D)) {
+                if (event.button === 0) { // Left-click
+                    let closestParticle = null;
+                    let minDistance = Infinity;
+                    for (const p of pbdEngine.particles) {
+                        if (p.invMass === 0) continue;
+                        const dist = p.pos.distanceTo(mousePoint3D);
+                        if (dist < minDistance) {
+                            minDistance = dist;
+                            closestParticle = p;
+                        }
+                    }
+                    if (minDistance < 2) {
+                        const anchorConstraint = pbdEngine.constraints.find(c => c.isAnchor && c.p1 === closestParticle);
+                        if (anchorConstraint) {
+                            draggedParticle = anchorConstraint.p2;
+                        } else {
+                            draggedParticle = closestParticle;
+                        }
+                    }
+                } else if (event.button === 2) { // Right-click
+                    isCutting = true;
+                    performCut(mousePoint3D);
+                }
+            }
+        }
+
+        function onPointerMove(event) {
+            updateMouse(event);
+
+            if (isPanning) {
+                const deltaX = event.clientX - panStartPoint.x;
+                const deltaY = event.clientY - panStartPoint.y;
+
+                const vFOV = camera.fov * Math.PI / 180;
+                const height = 2 * Math.tan(vFOV / 2) * camera.position.z;
+                const width = height * camera.aspect;
+
+                camera.position.x -= deltaX * (width / window.innerWidth);
+                camera.position.y += deltaY * (height / window.innerHeight);
+
+                panStartPoint.set(event.clientX, event.clientY);
+                return;
+            }
+
+            raycaster.setFromCamera(mouse, camera);
+            if (raycaster.ray.intersectPlane(interactionPlane, mousePoint3D)) {
+                if (draggedParticle) {
+                    draggedParticle.pos.copy(mousePoint3D);
+                } else if (isCutting) {
+                    performCut(mousePoint3D);
+                }
+            }
+        }
+
+        function onPointerUp(event) {
+            draggedParticle = null;
+            if (event.button === 1) isPanning = false;
+            if (event.button === 2) isCutting = false;
+            try { renderer.domElement.releasePointerCapture?.(event.pointerId); } catch {}
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onMouseWheel(event) {
+            event.preventDefault();
+            camera.position.z += event.deltaY * 0.05;
+            camera.position.z = Math.max(5, Math.min(500, camera.position.z));
+        }
+
+        init();
+    </script>
+</body>
+</html>
